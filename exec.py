@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 '''
 My personal script for processing intf data to locate nbes
 
@@ -13,29 +14,23 @@ NBE(Narrow Bipolar Event) locating and clasification script
   polarity of the NBE
 '''
 
+import numpy as np
 import matplotlib.pyplot as plt
-import os.path as pat
 
-import os
 import time
 
+##custom imports##
+import boxInterface as bx
 
 
 
 
+#Nathan's box APP properties
+clientId = 'wlvj07x8beuuoehko90152d7j0331p6m'
+clientSecret = 'Eq2N2g5Go6h3waxfkTXwqoLVor7QgjqI'
 
 def main():
     pass
 
-
-
-
 if __name__ == '__main__':
-    start =  time.time()
-    try:
-        Main()
-    except KeyboardInterrupt:
-        print('Exit')
-    end = time.time()
-
-print('\n#### Computation time:',str(round((end - start)/60,4)) + ' min ####')
+    main()

@@ -10,20 +10,24 @@ What the module can do:
 3 The ability to parse through the file structure of a box file system
 4 The ability to determin the box-ID of a file/folder bassed on a file path
 '''
-
-from numpy import asarray
-from os import mkdir
-from os.path import split, isdir
 from webbrowser import open as open_webpage
 from boxsdk import OAuth2
 from http.server import BaseHTTPRequestHandler,HTTPServer
 from boxsdk import Client
-from datetime import date
-import time
+from boxsdk.object.item import Item as boxItem
+from collections import namedtuple
+from urllib3.exceptions import DecodeError
 
 auth_code = None
 
 class myHandler(BaseHTTPRequestHandler):
+    '''
+    Basic http server intented to be hosted on a local address
+
+    listens for a box authorization code. Box will redirect the user to the
+    address explained in the guide(the same one this server should be hosted on)
+    and in the porcesse give an auth code used in client -> box comunication
+    '''
 	#Handler for the GET requests
     def do_GET(self):
         if '?code=' in self.path:
@@ -45,28 +49,44 @@ server = HTTPServer(('0.0.0.0', 8000), myHandler)
 class boxInterface:
 
     def __init__(self,clientID,clientSecret):
+        '''
+        :param clientID:
+            Id string connecting the client's actions to a user's box app
+        :type clientID:
+            string
+        :param clientSecret:
+            secret id string connecting the client's actions to a user's box app
+        :type clientSecret:
+            string
+        '''
+
         self.clientID = clientID
         self.clientSecret = clientSecret
 
+        #requesting read-wright permission of user's box account
+        self.authorize_client()
+
     def authorize_client(self):
+
+        '''Methode for giving client read/wright permission for users box account
+        '''
+
         token_storage_file_name = './tokens.txt'
-        '''
-        Will prompt for authorization to interact with the user's box files.
-        '''
+
         #checking for prior authorization
         try:
             #reading the accesse token and the refresh token from a previous
             #sesions if it exsists
             with open(token_storage_file_name,'r') as file:
-                self.access_token,self.refresh_token = \
+                access_token,refresh_token = \
                             [c for c in file.read().split('\n') if c != '\n']
 
             #initializing the authorization object from boxsdk
             oauth = OAuth2(
                 client_id = self.clientID,
                 client_secret = self.clientSecret,
-                access_token = self.access_token,
-                refresh_token = self.refresh_token,
+                access_token = access_token,
+                refresh_token = refresh_token,
             )
 
             #initializing the client
@@ -78,6 +98,7 @@ class boxInterface:
                 #expire
             folder = self.client.folder(folder_id = '0')
             folder.get()
+            del folder
 
 
         #for one reason or another authorization hast to be granted again
@@ -109,42 +130,127 @@ class boxInterface:
                 raise Exception('Authorizatioin was denied.')
 
 
-            
+
             #fully initializing the authorization object from boxsdk
-            self.access_token, self.refresh_token =\
-                                                oauth.authenticate(auth_code)
-
-
-
-
-
+            access_token, refresh_token =\
+                                            oauth.authenticate(auth_code)
 
             #saving the access_token and refresh_token so the user wont be
                 #prompted to authorize again for a periode of time.
             with open(token_storage_file_name,'w') as file:
-                file.write(self.access_token + '\n' + self.refresh_token)
+                file.write(access_token + '\n' + refresh_token)
 
 
+            self.client = Client(oauth) #initializing the box client
 
-            #initializing the client
-            self.client = Client(oauth)
+            #checks that authorization was sucsefully
             try:
                 folder = self.client.folder(folder_id = '0')
                 folder.get()
+                del folder
             except:
                 raise Exception('Failed to authorize client')
+                del folder
+
+        #clean up
+        try:
+            del folder
+        except NameError:
+            pass
+
+    def boxFile(self,id):
+        '''Returns a box file obj from a given id
+
+        :param id:
+            The id string for the file on box to be repersented
+        :type id:
+            string
+        :return:
+            box file obj coresponding to the id string
+        :rtype:
+            :class:'boxsdk.object.file.File'
+        '''
+        return self.client.file(id)
+
+    def boxFolder(self,id):
+        '''Returns a box Folder bassed on the id number provided
+
+        :param id:
+            id string coresponding to a folder on box
+        :type id:
+            string
+        :return:
+            box folder obj coresponding to the id given
+        :rtype:
+            :class:'boxsdk.object.folder.Folder'
+        '''
+        return self.client.folder(id)
+
+    def getParentFolder(self,boxObject = None):
+        '''Gets the name and id of the parrent folder for the object provided
+
+        :parma boxObject:
+            box object from boxsdk module
+        :type boxObject:
+            :class:'boxsdk.object.folder.Folder' #for exsample
+        :param return:
+            box folder object for the parrent directory
+        :rtype:
+            :class:'boxsdk.object.folder.Folder'
+        '''
+        parentInfo = boxObject.get().parent
 
 
-'''!!!!!!MAKE SURE TO REMOVE THIS!!!!!!'''
-    #this being the client id and secret
-#values that tie the actions of the script to that of a singal account
-clientId = 'wlvj07x8beuuoehko90152d7j0331p6m'
-clientSecret = 'Eq2N2g5Go6h3waxfkTXwqoLVor7QgjqI'
-
-def main():
-    box = boxInterface(clientId,clientSecret)
-    box.authorize_client()
+        if parentInfo != None:
+            parrentId = parentInfo.id
+        elif id != '0':#means the folder is in the root dir
+            parrentId = '0'
+        else:
+            parrentId = None
 
 
-if __name__ == '__main__':
-    main()
+
+        return self.client.folder(parrentId)
+
+    def box_lsdir(self,parrent):
+        '''returns a box items iterator object coresponding to the contents of
+        parrent folder
+
+        :param parrent:
+            Box folder that we are trying to observer the contents of
+        :type parrent:
+            :class:'boxsdk.object.folder.Folder'
+        :return:
+            iterator of box items in the parrent folder
+        :rtype:
+            :class:'boxsdk.pagination.limit_offset_based_object_collection.LimitOffsetBasedObjectCollection'
+        '''
+        return parrent.get_items()
+
+    def download(self,item,saveLocation):
+        '''Downloads the file repersented by the box file object
+
+        :param item:
+            box file object coresponding to the file to be downloaded
+        :type item:
+            :class:'boxsdk.object.file.File'
+        :param saveLocation:
+            Where to save the file, including the name and file exstention
+
+            The name+ext can be gathered from item.name
+        :type saveLocation:
+            string
+        '''
+
+        #trys to download the file 5 times
+        for n in range(5):
+            try:
+                #download the file
+                with open(saveLocation,'wb') as location:
+                    item.download_to(location)
+                break
+                #when there is an issue downloading the file
+            except DecodeError:
+                pass
+        else:
+            raise Exception('Failed to download: ' + saveLocation.split('/')[-1])
