@@ -1,6 +1,12 @@
 /__pycache__/
+/sourceProcessing/
+/figs/
 
 taskLog.txt
 tokens.txt
 test.chd
 mas_raw.pyc
+test.chD
+test.dat.gz
+test.dat
+skipLog.txt

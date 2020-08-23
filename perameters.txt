@@ -1,0 +1,80 @@
+numSections:
+    Defines the number of sections that will be used in estimating the
+    the noise floor values for the sferic signal
+
+startingRegionFraction:
+    The fraction that will define the size of the starting
+    region of the sferic signal. The size of the region is defined as a
+    percentage of the total temporal length of the signal
+
+noiseThreshold:
+    Defines the max allowed noise amplitude compared to the average level of the signal in
+		begining time interval defined by startingRegionFraction
+		---Has unints of volts/meter----
+
+safetyFactor:
+    Scaling factor the deviates the detection thresholds, from the estimated
+    noise floor values
+
+minEventWidth(microseconds):
+    The minimum allowed temporal width of an event(NBE). This parameter is
+    used to filter out random noise spikes which tend to be very short in
+    duration compared to true events
+
+nbeRange(microseconds):
+    the temporal range, centered around the detection time, that the NBE will be
+    defined as occupying
+
+        Format: (a,b)
+          typical values:(-30,100) In units of microseconds
+
+max_ecls(takes values in the range [0,5]):
+    Max allowed ecls value for source location points
+
+    The lower this value the more confident the algorithm is that the
+    determined source location is in fact correct. Defines the size of the region
+    the true value could be in.
+
+maxDeviation:float
+    A avg deviation from the best fit line is calculated for the time vs elevation
+    angle of the radio source location data, within a certain interval associated
+    with the identified NBE from the sferic.
+
+    This value is the max allowed avg deviation for the determined NBE to be
+    considered.
+
+numProcessingAttempts:
+    The max number of attempts the script will make to
+    predict radio sources from the channel files. This is needed because sometimes
+    the script used, outright fails to find sources when on other attempts there
+    is not issue. I think this is a issues caused by the multi threading.\
+
+sourceProcLocation:
+    The folder location where the source processing script written by mark is
+    present
+
+T,S,I,P,W,Y:
+    used in the generation of the source data points from the channel data
+    off of the INTF array. Defined in more detail in the sources processing dir'
+
+!!!!Note the spacing under the hash marks here is critical for the script!!!!
+    #tells the code where the header ends
+##########
+
+numSections=20
+startingRegionFraction=.05
+noiseThreshold=1
+safetyFactor=.5
+noiseThreshold=.5
+minEventWidth=1
+nbeRange=(-30,100)
+max_ecls=2
+maxDeviation=1
+numProcessingAttempts=1
+sourceProcLocation=/home/nathan/Desktop/Reasearch/prodjects/NBE/nbeModule/sourceProcessing
+T=1
+S=256
+I=64
+P=4
+W=3
+Y=2016
