@@ -47,7 +47,12 @@ numProcessingAttempts:
     The max number of attempts the script will make to
     predict radio sources from the channel files. This is needed because sometimes
     the script used, outright fails to find sources when on other attempts there
-    is not issue. I think this is a issues caused by the multi threading.\
+    is not issue. I think this is a issues caused by the multi threading.
+
+maxFileSize(mega-bytes):
+    The max allowed file size the channel files from the intf array can have.
+    This limit is imposed because the large ram requirments needed to process
+    larges files.
 
 sourceProcLocation:
     The folder location where the source processing script written by mark is
@@ -55,7 +60,12 @@ sourceProcLocation:
 
 T,S,I,P,W,Y:
     used in the generation of the source data points from the channel data
-    off of the INTF array. Defined in more detail in the sources processing dir'
+    off of the INTF array. Defined in more detail in the sources processing dir
+
+    There is an issue with multi threading. To get past this: The T parameter
+    should be set to 1, limiting the script to one thread. The issue is
+    the inconsistent generation of source location data, some time more or less
+    source locations are determined when multi-threading is used.
 
 !!!!Note the spacing under the hash marks here is critical for the script!!!!
     #tells the code where the header ends
@@ -71,6 +81,7 @@ nbeRange=(-30,100)
 max_ecls=2
 maxDeviation=1
 numProcessingAttempts=1
+maxFileSize=1500
 sourceProcLocation=/home/nathan/Desktop/Reasearch/prodjects/NBE/nbeModule/sourceProcessing
 T=1
 S=256

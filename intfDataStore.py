@@ -436,7 +436,7 @@ class sourcesStore:
             if indicies.size == 0:
                 #means there were no source locations in the interval we care
                 #about
-                return (None,None,None,None)
+                return (None,None,None,None,None)
             #selecting the data points within the the interval
             time = self.time[indicies]*cFactor
             offset = time[0]

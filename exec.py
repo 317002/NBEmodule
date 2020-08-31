@@ -18,6 +18,8 @@ NBE(Narrow Bipolar Event) locating and clasification script
 
 import os
 import datetime
+import resource
+import shutil
 
 import numpy as np
 import os.path as pat
@@ -27,6 +29,10 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from shutil import copyfile
 
+
+
+def getRam():
+    print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 
 
@@ -149,24 +155,26 @@ def main():
     events = (pat.join(eventLocation,c) for c in os.listdir(eventLocation))
 
     for event in events:
-
+        #used to name the event folder
         eventName = pat.split(event)[1]
-        # print(eventName)
+        print(eventName)
 
-        if not '2016.08.24_00-03-30_822972' in event:
-            continue
-
-
-        lookFurther,skip,noiseLevels,disp = False,False,False,0            #init
-
+        #dict object containing the files in the event folder, bassed on file extention
         files = isolateFilePaths([pat.join(event,c) for c in os.listdir(event)])
 
+        #checking that the file size not over the max allowed value
+        if pat.getsize(files["chd"])*1e-6 > per["maxFileSize"]:
+            skipLogger(eventName,'file size too large',True)
+            continue
+
         sferic = store.loadFA(files['chd'])
-
+        #amplitude of the signal during the begining of the time interval
         initialAmplitude = sferic.max_of_a_section(0,\
-                                        int(1/per['startingRegionFraction']))
-        while True:
+                                           int(1/per['startingRegionFraction']))
 
+
+        lookFurther,skip,noiseLevels,disp = False,False,False,0 #init
+        while True:
             '''LoopExplanation.txt explains how this loop section functions
             '''
 
@@ -177,6 +185,7 @@ def main():
                                                         per['numSections'],\
                                                         noiseLevels)
 
+
             #if no NBE could be found:skip event
             if nbeContents == 'No Event Was located':
                 skip = True
@@ -185,11 +194,12 @@ def main():
                 nbeInterval,nbeProp = nbeContents
 
             noiseLevels = nbeProp['noiseLevels']
-            #This is responcible for shifting the search for an NBE forward
+            #Shift the search past the point in time the second detection is
             disp += nbeProp['second_detection_index']
 
             if initialAmplitude >= nbeProp['upperThreshold']:
-                #activity in the begining: want to skip this event
+                #activity in the begining -> want to skip this event
+                    #could be missing info not captured in this recording
                 skip = True
                 skipLogger(eventName,'initial amplitude hit',True)
 
@@ -200,8 +210,8 @@ def main():
 
             if skip:
                 '''Means that for some reason a canidate, that meets the desired
-                criteria, couldnt be found anywhere in the event. This results in the
-                script moving on the the next event.
+                criteria, couldnt be found anywhere in the event. This results
+                in the script moving on the the next event.
                 '''
                 break
 
@@ -214,6 +224,8 @@ def main():
 
 
             # if the script made it this far: it passed
+            #create a new sferic store obj that only covers the temporal
+            #region coresponding to the potential NBE
             nbeSferic = sferic.timeSelect(nbeInterval)
             break
 
@@ -225,6 +237,8 @@ def main():
             print('\tFailed to find NBE, that match the chosen perameters')
             skip = True
 
+
+
         if skip:
             '''Means that for some reason an event that meets the desired
             criteria couldnt be found anywhere in the event. This results in the
@@ -235,10 +249,11 @@ def main():
 
         ######################Generating Sorce Locations########################
 
-        if 'gz' in files:       #clean-up
+        #remove any source location files from other runs
+        if 'gz' in files:
             os.remove(files['gz'])
 
-        #generating the source locations
+        #generating the source locations data
         sourceInterval = store.sfericToSourcesInterval(nbeInterval,files['chd'])
         sources,triggerTime = \
                     store.generateSources(files['chd'],sourceInterval,perFileLoc)
@@ -262,19 +277,20 @@ def main():
         #matches the def of time with that of the sferic data
         sources = sources.convertToUTC(triggerTime)
         #making best fit of time V.S elev in between second and first dection
-        lSquarInt = (nbeProp['detectionTime'],nbeProp['secondDetectionTime'])
-        lSquarInt = [c*1e-3 for c in lSquarInt]      #converting to miliseconds
-        #values return as none when no points can be found in the interval
-        m,b,fitTime,fitElev,avgDeviation = \
-                                sources.leastSqauresInInterval(lSquarInt,1e3)
+        lSquarInterval = (nbeProp['detectionTime'],nbeProp['secondDetectionTime'])
+        lSquarInterval = [c*1e-3 for c in lSquarInt]  #converting to miliseconds
 
-        if avgDeviation > per['maxDeviation']:
-            skipLogger(eventName,'over max source deviation',True)
+        #The returned values will come back
+        m,b,fitTime,fitElev,avgDeviation = \
+                            sources.leastSqauresInInterval(lSquarInterval,1e3)
+
+        if m == None:
+            skipLogger(eventName,'No sources in desired time interval',True)
             continue
 
 
-        if m == None:
-            print('\t No sources in desired time interval')
+        if avgDeviation > per['maxDeviation']:
+            skipLogger(eventName,'over max source deviation',True)
             continue
 
         intfDisplacment = 'Negative' if m < 0 else 'Positive'
@@ -288,9 +304,11 @@ def main():
         sourceColor = 'k'   #color of the source location points in the graph
         bestFitColor = 'r'  #color of the best fit line
 
-        # +- 100o microseconds around the detection point
+        # +- 100 microseconds around the detection point
+
         zoomedSferic = sferic.timeSelect((nbeProp['detectionTime'] - 500,\
                                           nbeProp['detectionTime'] + 500))
+
 
         fig =      plt.figure(figsize = (12,6))
 
