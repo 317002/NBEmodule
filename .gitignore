@@ -1,6 +1,10 @@
 /__pycache__/
 /sourceProcessing/
 /figs/
+/ofnote/
+/parserFigs/
+/var_noiseThreshold/
+/var_saftyFactor/
 
 taskLog.txt
 tokens.txt
@@ -10,3 +14,4 @@ test.chD
 test.dat.gz
 test.dat
 skipLog.txt
+parser.py

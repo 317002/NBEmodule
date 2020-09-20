@@ -73,12 +73,11 @@ T,S,I,P,W,Y:
 
 numSections=20
 startingRegionFraction=.05
-noiseThreshold=1
-safetyFactor=.5
 noiseThreshold=.5
+safetyFactor=1
 minEventWidth=1
 nbeRange=(-30,100)
-max_ecls=2
+max_ecls=1
 maxDeviation=1
 numProcessingAttempts=1
 maxFileSize=1500

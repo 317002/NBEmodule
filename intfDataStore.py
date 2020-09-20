@@ -528,6 +528,7 @@ class sourcesStore:
         ax.set_ylim(yTickValues[0],yTickValues[-1])
 
     def filt(self,points):
+
         self.time = self.time[points]
         self.azi = self.azi[points]
         self.elev = self.elev[points]
@@ -544,6 +545,12 @@ class sourcesStore:
         self.blue = self.blue[points]
         self.startsample = self.startsample[points]
         self.imax = self.imax[points]
+
+        self.pack = (c for c in [self.time,self.azi,self.elev,self.cosa,\
+                                self.cosb,self.pk2pk,self.rms,self.expk,\
+                                self.ecls,self.estf,self.emlt,self.red,\
+                                self.green,self.blue,self.startsample,\
+                                self.imax])
 
     def clean(self,ecls = 5):
         '''Cleans up the sorces generation by removing points below the horizon

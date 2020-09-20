@@ -31,11 +31,6 @@ from shutil import copyfile
 
 
 
-def getRam():
-    print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-
-
-
 #file structure is allready sorted by event.
 eventLocation = '/media/nathan/External/events'    #where the event folders are
 perFileLoc = './perameters.txt'
@@ -107,7 +102,7 @@ def passCriteria(nbeProp,perameters,eventName = None):
         namedtuple(bool,bool)
     '''
     skip,lookFurther,logDetails = False,False,''
-    # print(nbeProp['eventWidth'],perameters['minEventWidth'])
+
     #ifelse for looking further into the event or not
     if nbeProp['eventWidth'] < perameters['minEventWidth']:
         #duration of the event is too short
@@ -154,7 +149,10 @@ def main():
 
     events = (pat.join(eventLocation,c) for c in os.listdir(eventLocation))
 
-    for event in events:
+    for i,event in enumerate(events):
+
+
+
         #used to name the event folder
         eventName = pat.split(event)[1]
         print(eventName)
@@ -175,9 +173,7 @@ def main():
 
         lookFurther,skip,noiseLevels,disp = False,False,False,0 #init
         while True:
-            '''LoopExplanation.txt explains how this loop section functions
-            '''
-
+            #used to select the region to
             filterArray = np.arange(disp,sferic.t_vhf.size)
             nbeContents = store.getNBE_TimeInterval(sferic.filt(filterArray),\
                                                         per['safetyFactor'],\
@@ -188,8 +184,9 @@ def main():
 
             #if no NBE could be found:skip event
             if nbeContents == 'No Event Was located':
-                skip = True
                 skipLogger(eventName,nbeContents,True)
+                skip = True
+                break
             else:#  otherwise unpack like normal
                 nbeInterval,nbeProp = nbeContents
 
@@ -234,7 +231,9 @@ def main():
 
 
         else:
-            print('\tFailed to find NBE, that match the chosen perameters')
+
+            skipLogger(eventName,'Failed to find NBE, that' + \
+                                        'match the chosen perameters',True)
             skip = True
 
 
@@ -244,7 +243,7 @@ def main():
             criteria couldnt be found anywhere in the event. This results in the
             script moving on the the next event.
             '''
-            print('\t\tskipped:{0}'.format(eventName))
+            # print('\t\tskipped:{0}'.format(eventName))
             continue
 
         ######################Generating Sorce Locations########################
@@ -264,8 +263,12 @@ def main():
 
 
         ######################cleaing source location data######################
+
         sources.filt(np.where(sources.elev > 0))
         sources.filt(np.where(sources.ecls < per['max_ecls']))
+
+
+
 
         if sources.elev.size == 0:
             skipLogger(eventName,'No source location data after filtering',True)
@@ -276,9 +279,10 @@ def main():
 
         #matches the def of time with that of the sferic data
         sources = sources.convertToUTC(triggerTime)
+
         #making best fit of time V.S elev in between second and first dection
         lSquarInterval = (nbeProp['detectionTime'],nbeProp['secondDetectionTime'])
-        lSquarInterval = [c*1e-3 for c in lSquarInt]  #converting to miliseconds
+        lSquarInterval = [c*1e-3 for c in lSquarInterval]  #converting to miliseconds
 
         #The returned values will come back
         m,b,fitTime,fitElev,avgDeviation = \
@@ -304,10 +308,11 @@ def main():
         sourceColor = 'k'   #color of the source location points in the graph
         bestFitColor = 'r'  #color of the best fit line
 
-        # +- 100 microseconds around the detection point
+        # +- 500 microseconds around the detection point
 
         zoomedSferic = sferic.timeSelect((nbeProp['detectionTime'] - 500,\
                                           nbeProp['detectionTime'] + 500))
+
 
 
         fig =      plt.figure(figsize = (12,6))
@@ -318,7 +323,7 @@ def main():
         sourceAx = plt.twinx(nbeAx)
 
         nbe_xMinMax =    (np.min(nbeSferic.t_vhf),np.max(nbeSferic.t_vhf))
-        zoomed_xMinMax = (np.min(zoomedSferic.t_vhf),np.max(zoomedSferic.t_vhf))
+        zoomed_xMinMax = (zoomedSferic.t_vhf[0],np.max(zoomedSferic.t_vhf))
         sferic_xMinMax = (np.min(sferic.t_vhf),np.max(sferic.t_vhf))
 
         def check(a,b,small = True):
@@ -365,8 +370,8 @@ def main():
         nbeSferic.genSubPlot(nbeAx,nbe_xMinMax,nbe_yMinMax,\
                                         r'Time($\mu s$)',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
-                                        'NBE')
-        sferic.genSubPlot(eventAx,zoomed_xMinMax,zoomed_yMinMax,\
+                                        'NBE[{}]'.format(breakDownPol))
+        sferic.genSubPlot(eventAx,sferic_xMinMax,sferic_yMinMax,\
                                         r'Time($\mu s$)',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
                                         'Whole Event')
@@ -377,14 +382,17 @@ def main():
         sources.genSubPlot(sourceAx,sources.time,sources.elev,\
                                         r'Time($\mu s$)',\
                                         'Elevation Angle(deg)',\
-                                        'NBE',twinx = True)
+                                        'NBE[{}]'.format(breakDownPol)\
+                                        ,twinx = True)
 
 
 
 
         eventAx.scatter(sferic.t_vhf[::12],sferic.fa[::12],s = .4,c = sfericColor)
         nbeAx.scatter(nbeSferic.t_vhf,nbeSferic.fa,s = .4,c = sfericColor)
-        zoomedAx.scatter(zoomedSferic.t_vhf,zoomedSferic.fa,s = .4,c = sfericColor)
+        zoomedAx.scatter(zoomedSferic.t_vhf,zoomedSferic.fa,s = .4,c = 'r',zorder = 100)
+
+
         sourceAx.scatter(sources.time*1e3,sources.elev,s = 4,c = sourceColor)
         sourceAx.plot(fitTime,fitElev,c = bestFitColor)
 
@@ -437,7 +445,7 @@ def main():
 
 
         copyfile(perFileLoc,pat.join(base,pat.split(perFileLoc)[1]))
-
+        
 
 
 
