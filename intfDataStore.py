@@ -20,6 +20,7 @@ import os.path as pat
 
 import os
 import gzip
+from scipy import stats
 import datetime
 import subprocess #needed for integrating python-2 code.(The generation of
                   #source location data)
@@ -30,7 +31,7 @@ from collections import namedtuple
 import mas_raw
 
 
-
+import matplotlib.pyplot as plt
 
 class sfericStore:
     '''Object that stores and can take measurments of the contents of the sferic
@@ -156,7 +157,6 @@ class sfericStore:
         ax.set_xlim(xTickValues[0],xTickValues[-1])
         ax.set_ylim(yTickValues[0],yTickValues[-1])
 
-
     def max_of_a_section(self,n,numSections):
         '''Gives the max of the n-th section of a 1-d arrays
 
@@ -232,16 +232,6 @@ class sfericStore:
                  cant be predicted with that level of confidence.
         :type numSections:
             int
-        :param tolerence:
-            The max allowed percentage difference between the two sections used
-            to predict the noise level
-        :type tolerence:
-            float
-        :param firstFraction:
-            When a given, defines the size of the region when Calculating
-            the amplitude of the signal during the begining of the signal
-        :type firstFraction:
-            float
         '''
 
         array = self.fa
@@ -253,91 +243,110 @@ class sfericStore:
 
         def diff_measurment(a,b):
             '''Calculates the relative difference between values a and b
-            returns the fractional difference from a to b
 
             a:float
             b:float
             '''
-            #handling discontinuity at b = 0
-            if b != 0:
-                return np.abs((a-b)/b)
-            else:
-                return a
+            #now this means that a is allways smaller then b
+            a,b = (a,b) if a <= b else (b,a)
+            return np.sqrt((a - b)**2)/(b-a+1)
 
 
-
-        while tolerence  <= .99:
-            #left to right
-            check = False
+        #left to right scan
+        tolerence = .01
+        check = False
+        while tolerence <= .3: #max allowed tollerence
             for n in range(numSections):
                 for m in range(numSections):
+                    #making sure we are not comparing the same region
+                    if n!=m:
+                        #lists corespoding to the indicies of the
+                        #m and nth section of the array. out of <numSections>
+                        n_region = isolateSection(self.fa,numSections,n)
+                        m_region = isolateSection(self.fa,numSections,m)
 
-                    if m != n:#dont compare the same section
-                        #the max of two sections
-                        n_max = self.max_of_a_section(n,numSections)
-                        m_max = self.max_of_a_section(m,numSections)
-                        n_min = self.min_of_a_section(n,numSections)
-                        m_min = self.min_of_a_section(m,numSections)
+                        #getting the mean of both the n and mth region
+                        n_mean = np.average(self.fa[n_region])
+                        m_mean = np.average(self.fa[m_region])
 
-                        #checking if both sets of values are within a tolerence
-                        cond = (diff_measurment(n_max,m_max) < tolerence) and \
-                                    (diff_measurment(n_min,m_min) < tolerence)
-                        if cond:
-                            #when the sections are within some tolerence, this
-                            #common value is highly unlikley to be the product of
-                            #signal activity
-
-                            lr_max = n_max if n_max > m_max else m_max
-                            lr_min = n_min if n_min < m_min else m_min
+                        #getting the standard deviation of both the n and mth region
+                        n_deviation = np.std(self.fa[n_region])
+                        m_deviation = np.std(self.fa[m_region])
+                        #measuring the
+                        mean_diff = diff_measurment(n_mean,m_mean)
+                        deviation_diff = diff_measurment(n_deviation,m_deviation)
+                        if (mean_diff <= tolerence) and \
+                                                   (deviation_diff<= tolerence):
+                            #when set to true, it means we found two regions
+                            #that are simular to each other
                             check = True
+
+                            mean = (n_mean + m_mean)/2
+                            deviation = (n_deviation + m_deviation)/2
+                            lr_max = mean + 6*deviation
+                            lr_min = mean - 6*deviation
                             break
-                if check:
+                if check == True:
                     break
-            if lr_max == None:
-                tolerence += .01
-            else:
+            if check == True:
                 break
+            else:
+                tolerence += .01
         else:
-            #means no noise level could be found
+            #means that the noise levels couldnt be aproximated
             return None,None
 
-        #re-init
+        #right to left scan
         tolerence = .01
-        while tolerence <= .99:
-            #right to left
-            check = False
-            for n in range(-numSections,0):
+        check = False
+        while tolerence <= .3: #max allowed tollerence
+            for n in range(-numSections + 1,0):
                 n = -n
-                for m in range(-numSections,0):
+                for m in range(-numSections + 1,0):
                     m = -m
+                    #making sure we are not comparing the same region
+                    if n!=m:
+                        #lists corespoding to the indicies of the
+                        #m and nth section of the array. out of <numSections>
+                        n_region = isolateSection(self.fa,numSections,n)
+                        m_region = isolateSection(self.fa,numSections,m)
 
-                    if m != n:#dont compare the same section
-                        #max of the two sections
-                        n_max = self.max_of_a_section(n,numSections)
-                        m_max = self.max_of_a_section(m,numSections)
-                        n_min = self.min_of_a_section(n,numSections)
-                        m_min = self.min_of_a_section(m,numSections)
+                        #getting the mean of both the n and mth region
+                        n_mean = np.average(self.fa[n_region])
+                        m_mean = np.average(self.fa[m_region])
 
-                        #checking if both sets of values are within a tolerence
-                        cond = (diff_measurment(n_max,m_max) < tolerence) and \
-                                    (diff_measurment(n_min,m_min) < tolerence)
-                        if cond:
-                            #when the sections are within some tolerence, this
-                            #common value is highly unlikley to be the product of
-                            #signal activity
-                            rl_max = n_max if n_max > m_max else m_max
-                            rl_min = n_min if n_min < m_min else m_min
+                        #getting the standard deviation of both the n and mth region
+                        n_deviation = np.std(self.fa[n_region])
+                        m_deviation = np.std(self.fa[m_region])
+                        #measuring the
+                        mean_diff = diff_measurment(n_mean,m_mean)
+                        deviation_diff = diff_measurment(n_deviation,m_deviation)
+                        if (mean_diff <= tolerence) and \
+                                                   (deviation_diff<= tolerence):
+                            #when set to true, it means we found two regions
+                            #that are simular to each other
                             check = True
+
+                            mean = (n_mean + m_mean)/2
+                            deviation = (n_deviation + m_deviation)/2
+                            rl_max = mean + 6*deviation
+                            rl_min = mean - 6*deviation
                             break
-                if check:
+                if check == True:
                     break
-            if rl_max == None:
-                tolerence += .01
-            else:
+            if check == True:
                 break
+            else:
+                tolerence += .01
         else:
-            #means a noise level couldnt be found.
+            #means that the noise levels couldnt be aproximated
             return None,None
+
+
+        #right to left scan
+        tolerence = .01
+        check = False
+
 
 
         upperNoiseLevel = lr_max if lr_max <= rl_max else rl_max
@@ -436,7 +445,8 @@ class sourcesStore:
             if indicies.size == 0:
                 #means there were no source locations in the interval we care
                 #about
-                return (None,None,None,None,None)
+                return (None,None,None,None,None,None)
+            nPoints = indicies.size
             #selecting the data points within the the interval
             time = self.time[indicies]*cFactor
             offset = time[0]
@@ -452,10 +462,10 @@ class sourcesStore:
         avgDeviation = np.average(avgDeviation)
 
         outputFormater = namedtuple('leastSqaures',\
-        ['slope','y_intercept','fitTime','fitElev','avgDeviation'])
+        ['slope','y_intercept','fitTime','fitElev','avgDeviation','nPoints'])
         t = np.linspace(time[0],time[-1],20)
         # time*m + c
-        return outputFormater(m,c,t + offset,fitFunction(t),avgDeviation)
+        return outputFormater(m,c,t + offset,fitFunction(t),avgDeviation,nPoints)
 
     def genSubPlot(self,ax,x,y,xlabel = None,ylabel = None,title = None\
                     ,nXticks = 10\
@@ -758,10 +768,14 @@ def getNBE_TimeInterval(sferic,safetyFactor,nbe_range,numSections,noiseLevels = 
 
     #How much to deviate the noise levels as to not acidently 'scrap' the
     #noise floor when searching for a signal
+
     safetyFactor = abs(upperNoiseLevel - lowerNoiseLevel)*safetyFactor
 
-    upperThreshold = upperNoiseLevel + safetyFactor
-    lowerThreshold = lowerNoiseLevel - safetyFactor
+    # upperThreshold = upperNoiseLevel + safetyFactor
+    # lowerThreshold = lowerNoiseLevel - safetyFactor
+
+    upperThreshold = upperNoiseLevel
+    lowerThreshold = lowerNoiseLevel
 
     ####Locating Detection Index####
     try:
@@ -978,6 +992,40 @@ def sfericToSourcesInterval(sfericTimeInterval,chdPath):
     offset = get_date_time_from_filename(chdPath)[1]*10**3
     sourceInterval = [c*1e-3 - offset for c in sfericTimeInterval]
     return sourceInterval
+
+def isolateSection(array,numSections,n):
+    '''generator logic for Splitting a 1-d array into <numRegions> regions,
+    and isolating the nth region(0-indexed). The regions are split by the num
+    of indicies.
+
+    array:numpy array
+        The array that logic is to be applied too
+    numSections:int
+        The total number of regions the array would be split into
+    n:int
+        The index coresponding to the region that should be isolated
+    return:generator
+        an obj defining the indicies coresponding to the original array that
+        defines the nth region out of <numRegions>
+    '''
+    if n + 1 > numSections:
+        raise Exception('n + 1:{} > total number of regions:{}'.format(n,numSections))
+
+    #the number of indicies in one section of the array
+    secSize = int(array.size/numSections)
+
+    #when looking at the very last section
+    if n == numSections:
+        #handles the rounding error in the last section
+        #isolating the [n*secSize:array.size] interval
+        return np.arange((n - 1)*secSize,array.size)
+    else:
+        #isolating the [nsecSize,(n + 1)secSize] section interval
+        return np.arange(n*secSize,(n + 1)*secSize)
+
+
+
+
 
 def main():
     pass

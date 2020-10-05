@@ -187,7 +187,12 @@ def main():
                 skipLogger(eventName,nbeContents,True)
                 skip = True
                 break
+            elif nbeContents == 'No noise level found':
+                skipLogger(eventName,nbeContents,True)
+                skip = True
+                break
             else:#  otherwise unpack like normal
+                # print(nbeContents)
                 nbeInterval,nbeProp = nbeContents
 
             noiseLevels = nbeProp['noiseLevels']
@@ -270,13 +275,6 @@ def main():
 
 
 
-        if sources.elev.size == 0:
-            skipLogger(eventName,'No source location data after filtering',True)
-            continue
-
-
-
-
         #matches the def of time with that of the sferic data
         sources = sources.convertToUTC(triggerTime)
 
@@ -285,8 +283,15 @@ def main():
         lSquarInterval = [c*1e-3 for c in lSquarInterval]  #converting to miliseconds
 
         #The returned values will come back
-        m,b,fitTime,fitElev,avgDeviation = \
+        m,b,fitTime,fitElev,avgDeviation,npoints = \
                             sources.leastSqauresInInterval(lSquarInterval,1e3)
+        
+        #We ignore events that have too few points
+        if npoints < 2:
+            skipLogger(eventName,'Too few source location data points in' + \
+                                            ' detection time interval',True)
+            continue
+
 
         if m == None:
             skipLogger(eventName,'No sources in desired time interval',True)
@@ -305,8 +310,8 @@ def main():
         ################################Plotting################################
 
         sfericColor = 'g'   #color of the sferic points in the graph
-        sourceColor = 'k'   #color of the source location points in the graph
-        bestFitColor = 'r'  #color of the best fit line
+        sourceColor = 'r'   #color of the source location points in the graph
+        bestFitColor = 'k'  #color of the best fit line
 
         # +- 500 microseconds around the detection point
 
@@ -316,12 +321,12 @@ def main():
 
 
         fig =      plt.figure(figsize = (12,6))
-
-        nbeAx =    fig.add_subplot(313)
+        nbeAx =    fig.add_subplot(311)
         zoomedAx = fig.add_subplot(312)
-        eventAx =  fig.add_subplot(311)
+        eventAx =  fig.add_subplot(313)
         sourceAx = plt.twinx(nbeAx)
 
+        #Setting the bounds of the time axis for the sub plots
         nbe_xMinMax =    (np.min(nbeSferic.t_vhf),np.max(nbeSferic.t_vhf))
         zoomed_xMinMax = (zoomedSferic.t_vhf[0],np.max(zoomedSferic.t_vhf))
         sferic_xMinMax = (np.min(sferic.t_vhf),np.max(sferic.t_vhf))
@@ -351,7 +356,7 @@ def main():
                 return(b,a)
 
 
-        offsetFactor = .2
+        offsetFactor = .1
 
         nbe_Ymin =    check(nbeProp['lowerThreshold'],np.min(nbeSferic.fa))
         zoomed_Ymin = check(nbeProp['lowerThreshold'],np.min(zoomedSferic.fa))
@@ -370,30 +375,43 @@ def main():
         nbeSferic.genSubPlot(nbeAx,nbe_xMinMax,nbe_yMinMax,\
                                         r'Time($\mu s$)',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
-                                        'NBE[{}]'.format(breakDownPol))
-        sferic.genSubPlot(eventAx,sferic_xMinMax,sferic_yMinMax,\
-                                        r'Time($\mu s$)',\
+                                        '')
+        sferic.genSubPlot(eventAx,sferic_xMinMax,zoomed_yMinMax,\
+                                        '',
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
-                                        'Whole Event')
+                                        '')
         zoomedSferic.genSubPlot(zoomedAx,zoomed_xMinMax,zoomed_yMinMax,\
-                                        r'Time($\mu s$)',\
+                                        '',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
-                                        r'Zoomed in($\pm$500$\mu s$)')
+                                        '')
         sources.genSubPlot(sourceAx,sources.time,sources.elev,\
                                         r'Time($\mu s$)',\
                                         'Elevation Angle(deg)',\
                                         'NBE[{}]'.format(breakDownPol)\
                                         ,twinx = True)
 
+        eventAx.scatter(sferic.t_vhf[::12],\
+                            sferic.fa[::12],\
+                            s = .4,\
+                            c = sfericColor)
+
+        nbeAx.scatter(nbeSferic.t_vhf,\
+                       nbeSferic.fa,\
+                       s = .4,\
+                       c = sfericColor)
+
+        zoomedAx.scatter(zoomedSferic.t_vhf,\
+                             zoomedSferic.fa,\
+                             s = .4,\
+                             c = sfericColor,
+                             zorder = 100)
 
 
-
-        eventAx.scatter(sferic.t_vhf[::12],sferic.fa[::12],s = .4,c = sfericColor)
-        nbeAx.scatter(nbeSferic.t_vhf,nbeSferic.fa,s = .4,c = sfericColor)
-        zoomedAx.scatter(zoomedSferic.t_vhf,zoomedSferic.fa,s = .4,c = 'r',zorder = 100)
-
-
-        sourceAx.scatter(sources.time*1e3,sources.elev,s = 4,c = sourceColor)
+        sourceAx.scatter((sources.time)*1e3,\
+                                                      sources.elev,\
+                                                      s = 4,\
+                                                      c = sourceColor)
+        #best g
         sourceAx.plot(fitTime,fitElev,c = bestFitColor)
 
 
@@ -416,9 +434,14 @@ def main():
                     nbeProp['lowerThreshold'],'b')
         plotVertBar(zoomedAx,(np.min(zoomedSferic.fa),np.max(zoomedSferic.fa)),
                     nbeProp['detectionTime'])
+        ####Main Section####
+        plotVertBar(eventAx,(np.min(sferic.fa),np.max(sferic.fa)),
+                    nbeProp['detectionTime'])
+        plotVertBar(eventAx,(np.min(sferic.fa),np.max(sferic.fa)),
+                    nbeProp['secondDetectionTime'])
 
         ##########################Formating the layout##########################
-        plt.tight_layout(h_pad = .8)
+        plt.tight_layout(h_pad = .2)
 
         base = pat.join(figSaveBase,eventName)
         if not pat.isdir(base):
@@ -445,7 +468,9 @@ def main():
 
 
         copyfile(perFileLoc,pat.join(base,pat.split(perFileLoc)[1]))
-        
+
+
+
 
 
 

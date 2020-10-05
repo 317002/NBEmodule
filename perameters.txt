@@ -72,9 +72,9 @@ T,S,I,P,W,Y:
 ##########
 
 numSections=20
-startingRegionFraction=.05
-noiseThreshold=.5
-safetyFactor=1
+startingRegionFraction=.1
+noiseThreshold=1
+safetyFactor=2
 minEventWidth=1
 nbeRange=(-30,100)
 max_ecls=1
