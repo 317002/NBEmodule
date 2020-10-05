@@ -17,6 +17,7 @@ NBE(Narrow Bipolar Event) locating and clasification script
 
 
 import os
+import sys
 import datetime
 import resource
 import shutil
@@ -142,14 +143,27 @@ def skipLogger(eventName,reason,skip = False,success = False,clear = False):
             pass
 
 def main():
-    #Clearing out the skip log
-    skipLogger('','',clear = True)
+    while True:
+        ans = str(input('Clear the skip log?[y/n]: '))
+        if ans == 'n':#if not
+            print('Exit')
+            sys.exit()#close out the script
+        if ans == 'y':#if yes continue as normal
+            #Clearing out the skip log
+            skipLogger('','',clear = True)
+            break
+        
     #reading in processing parameters
     per = store.loadPerameters(perFileLoc)
 
     events = (pat.join(eventLocation,c) for c in os.listdir(eventLocation))
 
     for i,event in enumerate(events):
+
+        # if i < 6:
+        #     continue
+        # if i == 7:
+        #     break
 
 
 
@@ -172,15 +186,16 @@ def main():
 
 
         lookFurther,skip,noiseLevels,disp = False,False,False,0 #init
+        #helps min the noise for finding the detection points
+        windowAvgSferic = sferic.genWindowAvg(per['windowAvgSamples'])
         while True:
-            #used to select the region to
+            #used to select the region to search for an NBE
             filterArray = np.arange(disp,sferic.t_vhf.size)
             nbeContents = store.getNBE_TimeInterval(sferic.filt(filterArray),\
-                                                        per['safetyFactor'],\
-                                                        per['nbeRange'],\
-                                                        per['numSections'],\
-                                                        noiseLevels)
-
+                                                    windowAvgSferic.filt(filterArray),\
+                                                    per['nbeRange'],\
+                                                    per['numSections'],\
+                                                    noiseLevels)
 
             #if no NBE could be found:skip event
             if nbeContents == 'No Event Was located':
@@ -192,7 +207,6 @@ def main():
                 skip = True
                 break
             else:#  otherwise unpack like normal
-                # print(nbeContents)
                 nbeInterval,nbeProp = nbeContents
 
             noiseLevels = nbeProp['noiseLevels']
@@ -230,13 +244,7 @@ def main():
             #region coresponding to the potential NBE
             nbeSferic = sferic.timeSelect(nbeInterval)
             break
-
-
-
-
-
         else:
-
             skipLogger(eventName,'Failed to find NBE, that' + \
                                         'match the chosen perameters',True)
             skip = True
@@ -248,7 +256,6 @@ def main():
             criteria couldnt be found anywhere in the event. This results in the
             script moving on the the next event.
             '''
-            # print('\t\tskipped:{0}'.format(eventName))
             continue
 
         ######################Generating Sorce Locations########################
@@ -269,11 +276,9 @@ def main():
 
         ######################cleaing source location data######################
 
+        #removing points below the horizon line
         sources.filt(np.where(sources.elev > 0))
         sources.filt(np.where(sources.ecls < per['max_ecls']))
-
-
-
 
         #matches the def of time with that of the sferic data
         sources = sources.convertToUTC(triggerTime)
@@ -282,10 +287,15 @@ def main():
         lSquarInterval = (nbeProp['detectionTime'],nbeProp['secondDetectionTime'])
         lSquarInterval = [c*1e-3 for c in lSquarInterval]  #converting to miliseconds
 
-        #The returned values will come back
+        #The returned values will come back as None if there are no source data
+            #Points in the interval(the two red vertical bars)
         m,b,fitTime,fitElev,avgDeviation,npoints = \
-                            sources.leastSqauresInInterval(lSquarInterval,1e3)
-        
+                            sources.leastSqauresInterval(lSquarInterval,1e3)
+
+        if m == None:
+            skipLogger(eventName,'No sources in desired time interval',True)
+            continue
+
         #We ignore events that have too few points
         if npoints < 2:
             skipLogger(eventName,'Too few source location data points in' + \
@@ -293,33 +303,33 @@ def main():
             continue
 
 
-        if m == None:
-            skipLogger(eventName,'No sources in desired time interval',True)
-            continue
-
-
         if avgDeviation > per['maxDeviation']:
             skipLogger(eventName,'over max source deviation',True)
             continue
 
-        intfDisplacment = 'Negative' if m < 0 else 'Positive'
+        #storing the slope of the line in the properties dict --> file
+        nbeProp['sourcesFitSlope'] = m
+        #storing how many source location data points are in the interval(vertival bars)
+        nbeProp['numSourcesInInterval']
 
+        #Determining the polarity of the best fit line slope and then the
+            #break down polarity
+        intfDisplacment = 'Negative' if m < 0 else 'Positive'
         breakDownPol    = 'Negative' if intfDisplacment == nbeProp['polarity']\
                                      else 'Positive'
 
         ################################Plotting################################
 
-        sfericColor = 'g'   #color of the sferic points in the graph
-        sourceColor = 'r'   #color of the source location points in the graph
-        bestFitColor = 'k'  #color of the best fit line
+        sfericColor    = 'g'   #color of the sferic points in the graph
+        sourceColor    = 'r'   #color of the source location points in the graph
+        bestFitColor   = 'k'   #color of the best fit line
+        windowAvgColor = 'b'   #color of the window avg array plot
 
         # +- 500 microseconds around the detection point
-
         zoomedSferic = sferic.timeSelect((nbeProp['detectionTime'] - 500,\
                                           nbeProp['detectionTime'] + 500))
 
-
-
+        #initalizing the figure
         fig =      plt.figure(figsize = (12,6))
         nbeAx =    fig.add_subplot(311)
         zoomedAx = fig.add_subplot(312)
@@ -332,6 +342,10 @@ def main():
         sferic_xMinMax = (np.min(sferic.t_vhf),np.max(sferic.t_vhf))
 
         def check(a,b,small = True):
+            '''
+            reaturns the smaller value when small == True
+            otherwise it returns the larger value
+            '''
             if small:
                 if a <= b:
                     return a
@@ -343,6 +357,7 @@ def main():
                 else:
                     return b
 
+        ##################Setting X and Y limits for the plots##################
         def offset(min_max,offsetFactor):
             invert = False if min_max[0] <= min_max[1] else True
             a,b = min_max if not invert else (min_max[1],min_max[0])
@@ -360,23 +375,23 @@ def main():
 
         nbe_Ymin =    check(nbeProp['lowerThreshold'],np.min(nbeSferic.fa))
         zoomed_Ymin = check(nbeProp['lowerThreshold'],np.min(zoomedSferic.fa))
-        sferic_Ymin = check(nbeProp['lowerThreshold'],np.min(sferic.fa))
+        sferic_Ymin = check(nbeProp['lowerThreshold'],np.min(sferic.fa[::12]))
 
         nbe_Ymax =    check(nbeProp['upperThreshold'],np.max(nbeSferic.fa),False)
         zoomed_Ymax = check(nbeProp['upperThreshold'],np.max(zoomedSferic.fa),False)
-        sferic_Ymax = check(nbeProp['upperThreshold'],np.max(sferic.fa),True)
+        sferic_Ymax = check(nbeProp['upperThreshold'],np.max(sferic.fa[::12]),False)
 
         nbe_yMinMax =    offset((nbe_Ymin,nbe_Ymax),offsetFactor)
         zoomed_yMinMax = offset((zoomed_Ymin,zoomed_Ymax),offsetFactor)
         sferic_yMinMax = offset((sferic_Ymin,sferic_Ymax),offsetFactor)
 
-
+        #########################Creating the sub plots#########################
 
         nbeSferic.genSubPlot(nbeAx,nbe_xMinMax,nbe_yMinMax,\
                                         r'Time($\mu s$)',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
                                         '')
-        sferic.genSubPlot(eventAx,sferic_xMinMax,zoomed_yMinMax,\
+        sferic.genSubPlot(eventAx,sferic_xMinMax,sferic_yMinMax,\
                                         '',
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
                                         '')
@@ -390,6 +405,7 @@ def main():
                                         'NBE[{}]'.format(breakDownPol)\
                                         ,twinx = True)
 
+        ############################Plotting the data###########################
         eventAx.scatter(sferic.t_vhf[::12],\
                             sferic.fa[::12],\
                             s = .4,\
@@ -400,18 +416,36 @@ def main():
                        s = .4,\
                        c = sfericColor)
 
+        windowAvgNbe = windowAvgSferic.timeSelect(nbeInterval)
+
+        nbeAx.scatter(windowAvgNbe.t_vhf,\
+                       windowAvgNbe.fa,\
+                       s = .4,\
+                       c = windowAvgColor)
+
+        windowAvgZoomed = windowAvgSferic.timeSelect(zoomed_xMinMax)
+
+        zoomedAx.scatter(windowAvgZoomed.t_vhf,\
+                             windowAvgZoomed.fa,\
+                             s = .4,\
+                             c = windowAvgColor,
+                             zorder = 100,\
+                             alpha = .5)
+
         zoomedAx.scatter(zoomedSferic.t_vhf,\
                              zoomedSferic.fa,\
                              s = .4,\
                              c = sfericColor,
-                             zorder = 100)
+                             zorder = 99)
 
 
         sourceAx.scatter((sources.time)*1e3,\
-                                                      sources.elev,\
-                                                      s = 4,\
-                                                      c = sourceColor)
-        #best g
+                          sources.elev,\
+                          s = 4,\
+                          c = sourceColor)
+
+
+        #plotting the best fit line
         sourceAx.plot(fitTime,fitElev,c = bestFitColor)
 
 
@@ -434,11 +468,17 @@ def main():
                     nbeProp['lowerThreshold'],'b')
         plotVertBar(zoomedAx,(np.min(zoomedSferic.fa),np.max(zoomedSferic.fa)),
                     nbeProp['detectionTime'])
-        ####Main Section####
-        plotVertBar(eventAx,(np.min(sferic.fa),np.max(sferic.fa)),
-                    nbeProp['detectionTime'])
-        plotVertBar(eventAx,(np.min(sferic.fa),np.max(sferic.fa)),
+        plotVertBar(zoomedAx,(np.min(zoomedSferic.fa),np.max(zoomedSferic.fa)),
                     nbeProp['secondDetectionTime'])
+        ####Main Section####
+        plotVertBar(eventAx,sferic_yMinMax,\
+                    nbeProp['detectionTime'])
+        plotVertBar(eventAx,sferic_yMinMax,\
+                    nbeProp['secondDetectionTime'])
+        plotHorzBar(eventAx,(sferic.t_vhf[::12][0],sferic.t_vhf[::12][-1]),\
+                    nbeProp['lowerThreshold'],'b')
+        plotHorzBar(eventAx,(sferic.t_vhf[::12][0],sferic.t_vhf[::12][-1]),\
+                    nbeProp['upperThreshold'],'b')
 
         ##########################Formating the layout##########################
         plt.tight_layout(h_pad = .2)
@@ -452,11 +492,15 @@ def main():
                                                 faPol = nbeProp['polarity'],\
                                                 sPol = intfDisplacment,\
                                                 pol = breakDownPol))
+
+        #saving the figure
         plt.savefig(figSaveLocation)
+        # plt.show()
         plt.close('all')
 
         skipLogger(eventName,'',success= True)
 
+        #saving the nbe properties dict object to a text file
         propSaveLocation = pat.join(base,'nbeProperties.txt')
         with open(propSaveLocation,'w') as doc:
             pass
@@ -466,7 +510,8 @@ def main():
                 doc.write(txtF.format(key,value))
             doc.write(txtF.format('avgDeviation',avgDeviation))
 
-
+        #making a copy of the perameters file used in generating the file and
+            #saving it to the event directory
         copyfile(perFileLoc,pat.join(base,pat.split(perFileLoc)[1]))
 
 

@@ -8,30 +8,29 @@ few other ease of life functions
 '''
 
 '''
-I cant stress this enough. The unit time for the sources data is in MILISECONDS,
+The unit time for the sources data is in MILISECONDS,
 while the unit time for the sferic signal is in MICROSECONDS
-
-I've been burned by this an embarrassing number of times
 '''
 
 import numpy as np
 import pandas as pd
 import os.path as pat
+import matplotlib.pyplot as plt
 
 import os
 import gzip
-from scipy import stats
 import datetime
 import subprocess #needed for integrating python-2 code.(The generation of
                   #source location data)
 
 from collections import namedtuple
+from scipy import stats
+from scipy.ndimage.filters import uniform_filter1d
 
 ####Custom Imports####
 import mas_raw
 
 
-import matplotlib.pyplot as plt
 
 class sfericStore:
     '''Object that stores and can take measurments of the contents of the sferic
@@ -234,7 +233,8 @@ class sfericStore:
             int
         '''
 
-        array = self.fa
+        num_deviation = 6   #how many sigma is used to define the threasholds
+        array = self.fa#retro fit
 
 
         ####init####
@@ -283,14 +283,16 @@ class sfericStore:
 
                             mean = (n_mean + m_mean)/2
                             deviation = (n_deviation + m_deviation)/2
-                            lr_max = mean + 6*deviation
-                            lr_min = mean - 6*deviation
+                            lr_max = mean + num_deviation*deviation
+                            lr_min = mean - num_deviation*deviation
                             break
                 if check == True:
                     break
             if check == True:
                 break
             else:
+                #we reach here when a noise level couldnt be found so the allowed
+                    #tollerence is increased
                 tolerence += .01
         else:
             #means that the noise levels couldnt be aproximated
@@ -329,23 +331,21 @@ class sfericStore:
 
                             mean = (n_mean + m_mean)/2
                             deviation = (n_deviation + m_deviation)/2
-                            rl_max = mean + 6*deviation
-                            rl_min = mean - 6*deviation
+                            rl_max = mean + num_deviation*deviation
+                            rl_min = mean - num_deviation*deviation
                             break
                 if check == True:
                     break
             if check == True:
                 break
             else:
+                #we reach here when a noise level couldnt be found so the allowed
+                    #tollerence is increased
                 tolerence += .01
         else:
             #means that the noise levels couldnt be aproximated
             return None,None
 
-
-        #right to left scan
-        tolerence = .01
-        check = False
 
 
 
@@ -355,6 +355,22 @@ class sfericStore:
                                         ['lowerNoiseLevel','upperNoiseLevel'])
 
         return outputFormater(lowerNoiseLevel,upperNoiseLevel)
+
+    def genWindowAvg(self,nSamples):
+        '''
+        Generates a sfericStore object where a rolling avg avg operation has
+        been performed on the data arrays. The time stamp for each window is the
+        avg of the time stamps of the data coresponding to the window
+
+        nSamples:int
+            The number of samples that needs to be in each window
+        return:sfericStore
+            Windowed avg'ed sferic object
+        '''
+
+        return sfericStore(self.t_vhf,uniform_filter1d(self.fa,int(nSamples)))
+
+        #the number of windos that should be alloted
 
 class sourcesStore:
     '''Object for storing and processing generated vhf/hf sources data
@@ -420,7 +436,7 @@ class sourcesStore:
         # print([c[0] + triggerTime if i == 0 else c[0] for i,c in enumerate(self.pack)])
         return sourcesStore(*[c + triggerTime if i == 0 else c for i,c in enumerate(self.pack)])
 
-    def leastSqauresInInterval(self,timeInterval,cFactor):
+    def leastSqauresInterval(self,timeInterval,cFactor):
         '''Gives linear least squares solution for the time verses elevation
         angle plot within the given time interval
 
@@ -729,7 +745,7 @@ def loadSources(fileLocation,uncompressed = False):
     outputFormater = namedtuple('sourcesData',['dataObject','triggerTime'])
     return outputFormater(sourcesStore(*data),triggerTime)
 
-def getNBE_TimeInterval(sferic,safetyFactor,nbe_range,numSections,noiseLevels = False):
+def getNBE_TimeInterval(sferic,windowAvgSferic,nbe_range,numSections,noiseLevels = False):
     '''attempts to locate an NBE waveform in the sferic data set
 
     safety_factor : float
@@ -760,20 +776,14 @@ def getNBE_TimeInterval(sferic,safetyFactor,nbe_range,numSections,noiseLevels = 
     else:       #For injecting your own noise to remove the need for recomputation
         lowerNoiseLevel,upperNoiseLevel = noiseLevels
 
+    sferic = windowAvgSferic
 
     #means a noise level couldnt be found and therefor neither can an nbe
     if lowerNoiseLevel == None:
         #stops to func before more is done
         return 'No noise level found'
 
-    #How much to deviate the noise levels as to not acidently 'scrap' the
-    #noise floor when searching for a signal
-
-    safetyFactor = abs(upperNoiseLevel - lowerNoiseLevel)*safetyFactor
-
-    # upperThreshold = upperNoiseLevel + safetyFactor
-    # lowerThreshold = lowerNoiseLevel - safetyFactor
-
+    #this is retro fit, These used to be diff values
     upperThreshold = upperNoiseLevel
     lowerThreshold = lowerNoiseLevel
 
@@ -1022,10 +1032,6 @@ def isolateSection(array,numSections,n):
     else:
         #isolating the [nsecSize,(n + 1)secSize] section interval
         return np.arange(n*secSize,(n + 1)*secSize)
-
-
-
-
 
 def main():
     pass

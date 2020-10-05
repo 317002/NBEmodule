@@ -43,6 +43,10 @@ maxDeviation:float
     This value is the max allowed avg deviation for the determined NBE to be
     considered.
 
+windowAvgSample:int
+    The number of samples to use, in the window, when finding the windowed avg
+    array that's used in determining the detection points of a potential nbe
+
 numProcessingAttempts:
     The max number of attempts the script will make to
     predict radio sources from the channel files. This is needed because sometimes
@@ -69,18 +73,19 @@ T,S,I,P,W,Y:
 
 !!!!Note the spacing under the hash marks here is critical for the script!!!!
     #tells the code where the header ends
+    #there should be one empty row under them
 ##########
 
 numSections=20
 startingRegionFraction=.1
 noiseThreshold=1
-safetyFactor=2
 minEventWidth=1
 nbeRange=(-30,100)
 max_ecls=1
 maxDeviation=1
+windowAvgSamples=150
 numProcessingAttempts=1
-maxFileSize=1500
+maxFileSize=600
 sourceProcLocation=/home/nathan/Desktop/Reasearch/prodjects/NBE/nbeModule/sourceProcessing
 T=1
 S=256
