@@ -594,6 +594,29 @@ class sourcesStore:
         self.filt(np.where(self.ecls < ecls))
         #removing data coresponding to an elevation angle less the 0 deg
         self.filt(np.where(self.elev < 0))
+
+    def intervalYlim(self,timeInterval,offset = .01):
+        '''Returns an apropiate ylim for the sources elev vs time plot, for
+        some timeinterval
+
+        param:timeInterval(tuple(float,float))
+            The time interval a ylim is needed
+        param:offset:float
+            how much to offset the generated ylim by
+        '''
+        start,end = timeInterval if timeInterval[0] < timeInterval[1]\
+                                else (timeInterval[1],timeInterval[0])
+        #the indicies coresponding to the set of data that is within the
+        #time interval
+        indicies = np.where((self.time >= start) & (self.time <= end))[0]
+        #gathering the source elev data in the selected time interval
+        elev = self.elev[indicies]
+        #defining the ylim before the offset
+        ylim = [elev.min(),elev.max()]
+        #adding in the offset
+        ylim[0] -= offset
+        ylim[1] += offset
+        return ylim
 #code by Mark Stanley
 def get_date_time_from_filename(filename, maxExt=4 ):
     """atvt.get_date_time_from_filename( filename, maxExt=4 ):

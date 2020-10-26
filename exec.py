@@ -15,8 +15,9 @@ NBE(Narrow Bipolar Event) locating and clasification script
 '''
 
 
-
+import re
 import os
+import gc
 import sys
 import datetime
 import resource
@@ -29,6 +30,7 @@ import matplotlib.pyplot as plt
 
 from collections import namedtuple
 from shutil import copyfile
+from matplotlib.offsetbox import AnchoredText
 
 
 
@@ -152,18 +154,18 @@ def main():
             #Clearing out the skip log
             skipLogger('','',clear = True)
             break
-        
+
     #reading in processing parameters
     per = store.loadPerameters(perFileLoc)
 
     events = (pat.join(eventLocation,c) for c in os.listdir(eventLocation))
 
     for i,event in enumerate(events):
-
-        # if i < 6:
-        #     continue
-        # if i == 7:
-        #     break
+        n = 6
+        if i != n:
+            continue
+        if i > n:
+            break
 
 
 
@@ -285,7 +287,8 @@ def main():
 
         #making best fit of time V.S elev in between second and first dection
         lSquarInterval = (nbeProp['detectionTime'],nbeProp['secondDetectionTime'])
-        lSquarInterval = [c*1e-3 for c in lSquarInterval]  #converting to miliseconds
+        #this is just the detection interval start and end point in ms
+        lSquarInterval = [c*1e-3 for c in lSquarInterval]
 
         #The returned values will come back as None if there are no source data
             #Points in the interval(the two red vertical bars)
@@ -310,7 +313,9 @@ def main():
         #storing the slope of the line in the properties dict --> file
         nbeProp['sourcesFitSlope'] = m
         #storing how many source location data points are in the interval(vertival bars)
-        nbeProp['numSourcesInInterval']
+        nbeProp['numSourcesInInterval'] = npoints
+        #storing the net change in elevation of the source location best fit line
+        nbeProp['sourceElevChange'] = fitElev[-1] - fitElev[0]
 
         #Determining the polarity of the best fit line slope and then the
             #break down polarity
@@ -325,21 +330,27 @@ def main():
         bestFitColor   = 'k'   #color of the best fit line
         windowAvgColor = 'b'   #color of the window avg array plot
 
+
         # +- 500 microseconds around the detection point
         zoomedSferic = sferic.timeSelect((nbeProp['detectionTime'] - 500,\
                                           nbeProp['detectionTime'] + 500))
+        intervalSferic = sferic.timeSelect((nbeProp['detectionTime'],\
+                                           nbeProp['secondDetectionTime']))
 
         #initalizing the figure
-        fig =      plt.figure(figsize = (12,6))
-        nbeAx =    fig.add_subplot(311)
-        zoomedAx = fig.add_subplot(312)
-        eventAx =  fig.add_subplot(313)
-        sourceAx = plt.twinx(nbeAx)
+        fig =      plt.figure(figsize = (12,9))
 
-        #Setting the bounds of the time axis for the sub plots
-        nbe_xMinMax =    (np.min(nbeSferic.t_vhf),np.max(nbeSferic.t_vhf))
-        zoomed_xMinMax = (zoomedSferic.t_vhf[0],np.max(zoomedSferic.t_vhf))
-        sferic_xMinMax = (np.min(sferic.t_vhf),np.max(sferic.t_vhf))
+        nbeAx =         fig.add_subplot(413)
+        zoomedAx =      fig.add_subplot(412)
+        eventAx =       fig.add_subplot(411)
+        nbeIntervalAx = fig.add_subplot(414)
+
+
+
+        #for the windows where we plot the source locations
+        intervalSourceAx = plt.twinx(nbeIntervalAx)
+        sourceAx =      plt.twinx(nbeAx)
+
 
         def check(a,b,small = True):
             '''
@@ -370,39 +381,59 @@ def main():
             else:
                 return(b,a)
 
+        #Setting the bounds of the time axis for the sub plots
+        nbe_xMinMax =    (np.min(nbeSferic.t_vhf),np.max(nbeSferic.t_vhf))
+        zoomed_xMinMax = (zoomedSferic.t_vhf[0],np.max(zoomedSferic.t_vhf))
+        sferic_xMinMax = (np.min(sferic.t_vhf),np.max(sferic.t_vhf))
+        interval_xMinMax = (intervalSferic.t_vhf[0],intervalSferic.t_vhf[-1])
 
         offsetFactor = .1
 
-        nbe_Ymin =    check(nbeProp['lowerThreshold'],np.min(nbeSferic.fa))
-        zoomed_Ymin = check(nbeProp['lowerThreshold'],np.min(zoomedSferic.fa))
-        sferic_Ymin = check(nbeProp['lowerThreshold'],np.min(sferic.fa[::12]))
+        nbe_Ymin      = check(nbeProp['lowerThreshold'],np.min(nbeSferic.fa))
+        zoomed_Ymin   = check(nbeProp['lowerThreshold'],np.min(zoomedSferic.fa))
+        sferic_Ymin   = check(nbeProp['lowerThreshold'],np.min(sferic.fa[::12]))
+        interval_Ymin = check(nbeProp['lowerThreshold'],np.min(intervalSferic.fa))
 
         nbe_Ymax =    check(nbeProp['upperThreshold'],np.max(nbeSferic.fa),False)
         zoomed_Ymax = check(nbeProp['upperThreshold'],np.max(zoomedSferic.fa),False)
         sferic_Ymax = check(nbeProp['upperThreshold'],np.max(sferic.fa[::12]),False)
+        interval_Ymax = check(nbeProp['upperThreshold'],np.max(intervalSferic.fa),False)
 
         nbe_yMinMax =    offset((nbe_Ymin,nbe_Ymax),offsetFactor)
         zoomed_yMinMax = offset((zoomed_Ymin,zoomed_Ymax),offsetFactor)
         sferic_yMinMax = offset((sferic_Ymin,sferic_Ymax),offsetFactor)
+        interval_yMinMax = offset((interval_Ymin,interval_Ymax),offsetFactor)
+        intervalSource_yMinMax = sources.intervalYlim(lSquarInterval)
 
         #########################Creating the sub plots#########################
 
         nbeSferic.genSubPlot(nbeAx,nbe_xMinMax,nbe_yMinMax,\
-                                        r'Time($\mu s$)',\
+                                        '',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
                                         '')
         sferic.genSubPlot(eventAx,sferic_xMinMax,sferic_yMinMax,\
                                         '',
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
-                                        '')
+                                        '{1} NBE[{0}]'.format(breakDownPol,eventName))
         zoomedSferic.genSubPlot(zoomedAx,zoomed_xMinMax,zoomed_yMinMax,\
                                         '',\
                                         r'$\Delta E\left[ \frac{V}{m}\right]$',\
                                         '')
         sources.genSubPlot(sourceAx,sources.time,sources.elev,\
-                                        r'Time($\mu s$)',\
+                                        '',\
                                         'Elevation Angle(deg)',\
-                                        'NBE[{}]'.format(breakDownPol)\
+                                        ''\
+                                        ,twinx = True)
+
+        nbeSferic.genSubPlot(nbeIntervalAx,interval_xMinMax,interval_yMinMax,\
+                                        r'Time($\mu s$)',\
+                                        r'$\Delta E\left[ \frac{V}{m}\right]$',\
+                                        '')
+
+        sources.genSubPlot(intervalSourceAx,sources.time,sources.elev,\
+                                        '',\
+                                        'Elevation Angle(deg)',\
+                                        ''\
                                         ,twinx = True)
 
         ############################Plotting the data###########################
@@ -447,6 +478,35 @@ def main():
 
         #plotting the best fit line
         sourceAx.plot(fitTime,fitElev,c = bestFitColor)
+        intervalSourceAx.plot(fitTime,fitElev,c = bestFitColor)
+
+
+        #Plotting the data in the nbe interval
+        nbeIntervalAx.scatter(nbeSferic.t_vhf,\
+                       nbeSferic.fa,\
+                       s = .4,\
+                       c = sfericColor)
+
+        nbeIntervalAx.scatter(windowAvgNbe.t_vhf,\
+                       windowAvgNbe.fa,\
+                       s = .4,\
+                       c = windowAvgColor)
+
+        intervalSourceAx.scatter((sources.time)*1e3,\
+                          sources.elev,\
+                          s = 10,\
+                          c = sourceColor)
+
+        #setting the sources ylim
+        intervalSourceAx.set_ylim(*intervalSource_yMinMax,.05)
+        #setting the sources y-tick-marks
+        intervalSourceYticks = np.linspace(*intervalSource_yMinMax,7).round(2)
+        intervalSourceAx.set_yticks(intervalSourceYticks)
+        # intervalSourceAx.grid()
+
+
+
+
 
 
 
@@ -457,19 +517,27 @@ def main():
                     nbeProp['upperThreshold'],'b')
         plotHorzBar(nbeAx,(nbeSferic.t_vhf[0],nbeSferic.t_vhf[-1]),\
                     nbeProp['lowerThreshold'],'b')
-        plotVertBar(nbeAx,(np.min(nbeSferic.fa),np.max(nbeSferic.fa)),
+        plotVertBar(nbeAx,nbe_yMinMax,
                     nbeProp['detectionTime'])
-        plotVertBar(nbeAx,(np.min(nbeSferic.fa),np.max(nbeSferic.fa)),
+        plotVertBar(nbeAx,nbe_yMinMax,
                     nbeProp['secondDetectionTime'])
+
+        nbeAx.vlines(nbe_xMinMax[0]+.3,*nbe_yMinMax,color = 'fuchsia')
+        nbeAx.vlines(nbe_xMinMax[1]-.1,*nbe_yMinMax,color = 'fuchsia')
         ####zoomed in section####
         plotHorzBar(zoomedAx,(zoomedSferic.t_vhf[0],zoomedSferic.t_vhf[-1]),\
                     nbeProp['upperThreshold'],'b')
         plotHorzBar(zoomedAx,(zoomedSferic.t_vhf[0],zoomedSferic.t_vhf[-1]),\
                     nbeProp['lowerThreshold'],'b')
-        plotVertBar(zoomedAx,(np.min(zoomedSferic.fa),np.max(zoomedSferic.fa)),
+        plotVertBar(zoomedAx,zoomed_yMinMax,
                     nbeProp['detectionTime'])
-        plotVertBar(zoomedAx,(np.min(zoomedSferic.fa),np.max(zoomedSferic.fa)),
+        plotVertBar(zoomedAx,zoomed_yMinMax,
                     nbeProp['secondDetectionTime'])
+        zoomedAx.vlines(zoomed_xMinMax[0]+2,*zoomed_yMinMax,color = 'k')
+        zoomedAx.vlines(zoomed_xMinMax[1]-1,*zoomed_yMinMax,color = 'k')
+
+        zoomedAx.vlines(nbe_xMinMax[0],*zoomed_yMinMax,color = 'fuchsia')
+        zoomedAx.vlines(nbe_xMinMax[1],*zoomed_yMinMax,color = 'fuchsia')
         ####Main Section####
         plotVertBar(eventAx,sferic_yMinMax,\
                     nbeProp['detectionTime'])
@@ -479,9 +547,33 @@ def main():
                     nbeProp['lowerThreshold'],'b')
         plotHorzBar(eventAx,(sferic.t_vhf[::12][0],sferic.t_vhf[::12][-1]),\
                     nbeProp['upperThreshold'],'b')
+        #ilustrating the zoomed in section's placment in the full interval
+        eventAx.vlines(zoomed_xMinMax[0],*sferic_yMinMax,color = 'k')
+        eventAx.vlines(zoomed_xMinMax[1],*sferic_yMinMax,color = 'k')
+
+        ####Interval Section####
+        nbeIntervalAx.vlines(nbeProp['detectionTime'],\
+                                     *interval_yMinMax,color = 'r',linewidths = 4)
+        nbeIntervalAx.vlines(nbeProp['secondDetectionTime'],\
+                                     *interval_yMinMax,color = 'r',linewidths = 3)
+
+
 
         ##########################Formating the layout##########################
-        plt.tight_layout(h_pad = .2)
+        fig.tight_layout(h_pad = .2)
+        #adding perameter text box
+        perBoxStr = f"""Best-fit slope = ${{ {round(m,3)} \\frac{{\Delta deg}}{{\mu s}} }}$
+        Best-fit Change in Elevation = ${{{round(nbeProp['sourceElevChange'],3)}^\circ}}$
+        Number of Sources = {npoints}
+        Average Source Deviation = {round(avgDeviation,3)}
+        """
+        perBoxStr = re.sub(f"  ","",perBoxStr)
+        perBoxStr = perBoxStr[:-1]
+
+        per_box = AnchoredText(perBoxStr,loc = 'lower right')
+        nbeIntervalAx.add_artist(per_box)
+        per_box.set_zorder(0)
+
 
         base = pat.join(figSaveBase,eventName)
         if not pat.isdir(base):
@@ -494,8 +586,9 @@ def main():
                                                 pol = breakDownPol))
 
         #saving the figure
-        plt.savefig(figSaveLocation)
-        # plt.show()
+        fig.savefig(figSaveLocation)
+        gc.collect() #collecting mem used by matplotlib
+        plt.show()
         plt.close('all')
 
         skipLogger(eventName,'',success= True)

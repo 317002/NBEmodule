@@ -1,24 +1,7 @@
 /__pycache__/
 /sourceProcessing/
 /figs/
-/ofnote/
-/parserFigs/
-/var_noiseThreshold/
-/var_saftyFactor/
-/perTesting/
-/trueNBE/
-/what/
-/run_trials/
 
-taskLog.txt
-tokens.txt
-test.chd
 mas_raw.pyc
-test.chD
-test.dat.gz
-test.dat
 skipLog.txt
-parser.py
-tester.py
-testing.py
-perameter_tester.py
+intftools.py
